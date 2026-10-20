@@ -1,0 +1,27 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'novaweb-test-'));
+process.env.DATA_DIR=dir;
+delete process.env.DATABASE_URL;
+const crm=require('../crm');
+test('CRM validates and persists statuses in local development mode',async()=>{
+ await crm.init();
+ assert.equal(crm.mode(),'temporary_file');
+ const lead=crm.create({name:'Тест',contact:'TEST-CONTACT',type:'START',notes:'Проверка'});
+ assert.equal(await crm.add(lead),true);
+ assert.equal(await crm.add(lead),false);
+ assert.equal((await crm.get(lead.id)).status,'new');
+ assert.equal(await crm.change(lead.id,'working').then(x=>x.status),'working');
+ assert.equal((await crm.get(lead.id)).history.length,2);
+ assert.equal(await crm.change('missing','done'),null);
+ assert.equal(await crm.change(lead.id,'invalid'),null);
+ const stats=await crm.summary();
+ assert.equal(stats.total,1);assert.equal(stats.counts.working,1);
+ assert.match(crm.describe(await crm.get(lead.id)),/В работе/);
+ assert.equal(crm.keyboard(lead.id).inline_keyboard.length,3);
+ fs.rmSync(dir,{force:true,recursive:true});
+});
