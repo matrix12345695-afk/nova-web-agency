@@ -11,6 +11,7 @@ const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATAB
 let ready=false;
 async function init(){
  if(!pool){ready=true;console.warn('CRM TEMPORARY: filesystem fallback. Data is lost when Render Free restarts.');return}
+ try{const u=new URL(process.env.DATABASE_URL);const host=u.hostname;const target=host.endsWith('.render.com')?'external_render_hostname':host.startsWith('dpg-')?'internal_render_hostname':'custom_hostname';console.log('CRM connectivity check:',target,'tls:',process.env.DATABASE_SSL==='require'?'required':'default','protocol:',u.protocol.replace(':',''));}catch(e){console.error('CRM DATABASE_URL format invalid:',e.message);throw Error('Invalid DATABASE_URL')}
  await pool.query("CREATE TABLE IF NOT EXISTS nova_leads (id text PRIMARY KEY, data jsonb NOT NULL, status text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS nova_lead_events (event_id bigserial PRIMARY KEY, lead_id text NOT NULL REFERENCES nova_leads(id), status text NOT NULL, recorded_at timestamptz NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS nova_telegram_updates (update_id bigint PRIMARY KEY, processed_at timestamptz NOT NULL DEFAULT now())");
