@@ -28,7 +28,7 @@ async function lead(req,res){
 const crypto=require('node:crypto');
 const crm=require('./crm');
 const WEBHOOK_SECRET=TOKEN?crypto.createHash('sha256').update('novaweb-webhook:'+TOKEN).digest('hex'):'';
-async function tg(method,data){const response=await fetch('https://api.telegram.org/bot'+TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(10000)});const r=await response.json();if(!response.ok||!r.ok)throw Error('Telegram '+method+' failed');return r.result}
+async function tg(method,data){const response=await fetch('https://api.telegram.org/bot'+TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(10000)});const r=await response.json();if(!response.ok||!r.ok){const detail=String(r.description||'unknown').replace(/[\r\n]/g,' ').slice(0,180);throw Error('Telegram '+method+' failed: '+response.status+' '+detail)}return r.result}
 async function telegramSend(chatId,message,keyboard){return tg('sendMessage',{chat_id:chatId,text:message,...(keyboard?{reply_markup:keyboard}:{})})}
 function menu(){return {inline_keyboard:[[{text:'📊 Статистика',callback_data:'menu|stats'},{text:'📥 Заявки',callback_data:'menu|leads'}],[{text:'🌐 Наш сайт',url:'https://novaweb-agency.onrender.com'}]]}}
 function statsText(){const s=crm.summary();return '📊 NOVA WEB · Сводка\nВсего: '+s.total+'\n'+Object.entries(crm.statuses).map(([k,label])=>label+': '+(s.counts[k]||0)).join('\n')+'\n\nВажно: до подключения постоянной базы данные на Render Free могут исчезнуть после развёртывания.'}
@@ -54,8 +54,26 @@ async function telegramWebhook(req,res){
     await telegramSend(CHAT,d[1]==='stats'?statsText():leadsText(),menu());
    }else if(d[0]==='st'&&crm.statuses[d[2]]){
     const x=crm.change(d[1],d[2]);
-    await tg('answerCallbackQuery',{callback_query_id:cb.id,text:x?'Статус обновлён':'Заявка не найдена'});
-    if(x)try{await tg('editMessageText',{chat_id:CHAT,message_id:cb.message.message_id,text:crm.describe(x),reply_markup:crm.keyboard(x.id)})}catch(e){console.error('Edit message failed',e.message)}
+    if(!x){
+      await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Заявка недоступна. Данные могли исчезнуть после перезапуска Render.',show_alert:true});
+    }else{
+      let displayed=false;
+      try{
+        if(!cb.message?.message_id)throw Error('Telegram callback has no message ID');
+        await tg('editMessageText',{chat_id:CHAT,message_id:cb.message.message_id,text:crm.describe(x),reply_markup:crm.keyboard(x.id)});
+        displayed=true;
+      }catch(e){
+        if(/message is not modified/i.test(e.message)){displayed=true}
+        else{
+          console.error('CRM message edit error:',e.message);
+          try{
+            await telegramSend(CHAT,'🔄 Актуальная карточка заявки\n\n'+crm.describe(x),crm.keyboard(x.id));
+            displayed=true;
+          }catch(sendError){console.error('CRM fallback message failed:',sendError.message)}
+        }
+      }
+      await tg('answerCallbackQuery',{callback_query_id:cb.id,text:displayed?'Статус: '+crm.statuses[d[2]]:'Статус сохранён, но Telegram не обновил карточку',show_alert:!displayed});
+    }
    }else await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Неизвестная команда'});
   }
  }catch(e){console.error('Telegram command error',e.message);return json(res,503,{ok:false})}
