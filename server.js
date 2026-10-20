@@ -33,6 +33,21 @@ async function telegramSend(chatId,message,keyboard){return tg('sendMessage',{ch
 function menu(){return {inline_keyboard:[[{text:'📊 Статистика',callback_data:'menu|stats'},{text:'📥 Заявки',callback_data:'menu|leads'}],[{text:'🌐 Наш сайт',url:'https://novaweb-agency.onrender.com'}]]}}
 function statsText(){const s=crm.summary();return '📊 NOVA WEB · Сводка\nВсего: '+s.total+'\n'+Object.entries(crm.statuses).map(([k,label])=>label+': '+(s.counts[k]||0)).join('\n')+'\n\nВажно: до подключения постоянной базы данные на Render Free могут исчезнуть после развёртывания.'}
 function leadsText(){const items=crm.summary().recent;if(!items.length)return '📥 Заявок пока нет. Новые будут приходить в этот чат.';return '📥 Последние заявки\n\n'+items.map(x=>x.id+' · '+crm.statuses[x.status]+'\n'+x.name+' · '+x.type).join('\n\n')+'\n\nДетали: /lead ID'}
+
+function restoreFromTelegram(message,id){
+ const text=String(message?.text||'');
+ if(!/^[A-Za-z0-9]{8,48}$/.test(id)||!text.includes('NOVA WEB · Заявка '+id))return null;
+ const line=(label)=>{const row=text.split('\n').find(x=>x.startsWith(label+': '));return row?row.slice(label.length+2).trim():''};
+ const name=line('Имя').slice(0,80),contact=line('Контакт').slice(0,120),type=line('Тариф').slice(0,80),notes=line('Задача').slice(0,1500);
+ if(!name||!contact||!['START','GROW','SCALE'].includes(type))return null;
+ const at=new Date().toISOString();
+ const data={id,name,contact,type,notes,status:'new',createdAt:at,updatedAt:at,history:[{at,status:'new',source:'telegram_recovery'}]};
+ try{
+  if(!crm.get(id))crm.add(data);
+  return crm.get(id);
+ }catch(e){console.error('CRM recovery failed:',e.message);return null}
+}
+
 async function setupWebhook(){if(!TOKEN||!CHAT)return;try{await tg('setWebhook',{url:'https://novaweb-agency.onrender.com/api/telegram/webhook',secret_token:WEBHOOK_SECRET,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook configured')}catch(e){console.error('Webhook setup failed',e.message)}}
 async function telegramWebhook(req,res){
  if(!TOKEN||!CHAT||req.headers['x-telegram-bot-api-secret-token']!==WEBHOOK_SECRET)return json(res,403,{ok:false});
@@ -53,7 +68,8 @@ async function telegramWebhook(req,res){
     await tg('answerCallbackQuery',{callback_query_id:cb.id});
     await telegramSend(CHAT,d[1]==='stats'?statsText():leadsText(),menu());
    }else if(d[0]==='st'&&crm.statuses[d[2]]){
-    const x=crm.change(d[1],d[2]);
+    let x=crm.change(d[1],d[2]);
+    if(!x){const recovered=restoreFromTelegram(cb.message,d[1]);if(recovered)x=crm.change(d[1],d[2]);}
     if(!x){
       await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Заявка недоступна. Данные могли исчезнуть после перезапуска Render.',show_alert:true});
     }else{
