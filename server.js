@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const crm=require('./crm');
+const attribution=require('./attribution');
 const ui=require('./bot-ui');
 const ops=require('./operations');
 const reminders=require('./reminders');
@@ -42,7 +43,7 @@ async function lead(req,res){
  if(data.website)return json(res,200,{ok:true,message:'Заявка принята.'});
  const name=clean(data.name,80),contact=clean(data.contact,120),type=clean(data.type,80),notes=clean(data.notes,1500);
  if(name.length<2||contact.length<5||!['START','GROW','SCALE'].includes(type)||!data.consent)return json(res,400,{ok:false,message:'Проверьте обязательные поля'});
- const item=crm.create({name,contact,type,notes});
+ const item=crm.create({name,contact,type,notes,source:attribution.normalizeSource(data.source),campaign:attribution.normalizeCampaign(data.campaign)});
  try{await crm.add(item)}catch(e){console.error('CRM write failed:',e.message);return json(res,503,{ok:false,message:'Сейчас не удалось сохранить заявку, попробуйте позднее.'})}
  seen.push(now);limits.set(ip,seen);if(limits.size>5000)limits.clear();
  try{await send(crm.describe(item),ui.cardKeyboard(item.id))}catch(e){console.error('New lead Telegram notification failed; lead stored:',item.id,e.message)}
@@ -77,6 +78,7 @@ async function onMessage(m){
  }
  if(cmd==='/today'){const x=await crm.summary();x.all=await crm.all();return send(ui.todayText(x),ui.menu())}
  if(cmd==='/finance')return send(ops.finance(await crm.all()),ui.menu());
+ if(cmd==='/sources')return send(attribution.report(await crm.all()),ui.menu());
  if(cmd==='/find'){const q=parts.slice(1).join(' ');if(q.length<2)return send('Используй /find имя, телефон или номер заявки');const matches=await crm.search(q);return send(matches.length?'🔎 Найденные заявки\n\n'+matches.slice(0,10).map(x=>x.id+' · '+x.name+' · '+x.status).join('\n'):'Совпадений нет.',ui.menu())}
  if(cmd==='/overdue')return send(ops.deadlines(await crm.overdue()),ui.menu());
  if(['/note','/task','/due','/quote'].includes(cmd)){const p=ops.parse(cmd.slice(1),parts.slice(1));if(p.error)return send(p.error);const updated=await crm.amend(p.id,p.changes);return send(updated?'✅ Карточка обновлена\n\n'+ops.details(updated):'Не найдена заявка '+p.id,updated?ui.cardKeyboard(updated.id):ui.menu())}
@@ -100,6 +102,7 @@ async function onCallback(cb){
   }
   if(section==='today'){const x=await crm.summary();x.all=await crm.all();return showCard(cb,ui.todayText(x),ui.menu())}
   if(section==='finance')return showCard(cb,ops.finance(await crm.all()),ui.menu());
+  if(section==='sources')return showCard(cb,attribution.report(await crm.all()),ui.menu());
   if(section==='overdue')return showCard(cb,ops.deadlines(await crm.overdue()),ui.menu());
   if(section==='search')return showCard(cb,'🔎 Поиск клиента: отправь /find имя или телефон',ui.menu());
   if(section==='help')return showCard(cb,ui.helpText(),ui.back());
@@ -149,7 +152,7 @@ let checkingReminder=false;
 async function runReminders(){if(checkingReminder)return;checkingReminder=true;try{const result=await reminders.check({crm,send});if(result.status==='sent')console.log('Overdue digest delivered:',result.count)}catch(e){console.error('Overdue digest failed:',e.message)}finally{checkingReminder=false}}
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'seo-uz-v1',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'sales-funnel-v1',storage:crm.mode()});
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}

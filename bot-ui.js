@@ -5,7 +5,8 @@ function menu(){
  [{text:'📊 Панель управления',callback_data:'nav|dashboard'},{text:'📥 Заявки',callback_data:'nav|leads|0'}],
  [{text:'🆕 Новые',callback_data:'nav|new|0'},{text:'📅 Сегодня',callback_data:'nav|today'}],
  [{text:'🔎 Поиск',callback_data:'nav|search'},{text:'⏰ Просрочки',callback_data:'nav|overdue'}],
- [{text:'💰 Финансы',callback_data:'nav|finance'},{text:'📦 Резервная копия',callback_data:'nav|backup'}],
+ [{text:'📣 Источники',callback_data:'nav|sources'},{text:'💰 Финансы',callback_data:'nav|finance'}],
+ [{text:'📦 Резервная копия',callback_data:'nav|backup'}],
  [{text:'❔ Помощь',callback_data:'nav|help'},{text:'🌐 Открыть сайт',url:'https://novaweb-agency.onrender.com'}]
  ]};
 }
@@ -14,7 +15,7 @@ function summaryText(s,mode='temporary_file'){
  const c=s.counts||{};
  return ['📊 NOVA WEB · Панель владельца','','📋 Заявок: '+s.total,'🆕 Новых: '+(c.new||0),'🛠 В работе: '+(c.working||0),'💬 Связались: '+(c.contacted||0),'🧾 Счёт отправлен: '+(c.invoice||0),'✅ Завершено: '+(c.done||0),'❌ Отказ: '+(c.lost||0),'','🗃 Хранилище: '+(mode==='postgres'?'✅ PostgreSQL':mode==='temporary_file'?'⚠️ Временное':'❌ Недоступно'),'💳 Платежи: не подключены','', 'Счёт отправлен ≠ оплачено. Финансы появятся после платёжной интеграции.'].join('\n')
 }
-function helpText(){return ['🧭 NOVA WEB · Команды','','/start — панель','/stats или /status — сводка','/leads — последние заявки','/new — новые заявки','/today — заявки сегодня','/lead ID — карточка клиента','/backup — выгрузить архив заявок','/find запрос — поиск клиента','/note ID текст — заметка','/task ID текст — задача','/due ID ГГГГ-ММ-ДД — срок','/quote ID сумма — сумма предложения','/overdue — просроченные заказы','/finance — состояние платежей','/help — справка','','🔐 Доступ только владельцу. Не пересылайте выгрузки с контактами клиентов.'].join('\n')}
+function helpText(){return ['🧭 NOVA WEB · Команды','','/start — панель','/stats или /status — сводка','/leads — последние заявки','/new — новые заявки','/today — заявки сегодня','/lead ID — карточка клиента','/backup — выгрузить архив заявок','/find запрос — поиск клиента','/note ID текст — заметка','/task ID текст — задача','/due ID ГГГГ-ММ-ДД — срок','/quote ID сумма — сумма предложения','/overdue — просроченные заказы','/finance — состояние платежей','/sources — источники заявок','/help — справка','','🔐 Доступ только владельцу. Не пересылайте выгрузки с контактами клиентов.'].join('\n')}
 function financeText(){return '💰 NOVA WEB · Финансы\n\nПлатёжный провайдер пока не подключён. Реальные суммы, задолженности и поступления недоступны.\n\nСтатусы CRM отражают ход работы, а не подтверждают оплату.\n\nПосле подключения официальной оплаты появятся выручка, возвраты и сверка транзакций.'}
 function todayText(s){const today=new Date().toISOString().slice(0,10),items=(s.all||s.recent||[]).filter(x=>String(x.createdAt).startsWith(today));return ['📅 NOVA WEB · Сегодня','Дата UTC: '+today,'Новых заявок сегодня: '+items.length,'','Для просмотра карточек используйте «Заявки».'].join('\n')}
 function leadList(rows,filter='all',page=0){
