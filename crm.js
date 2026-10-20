@@ -23,7 +23,7 @@ function requireReady(){if(!ready)throw Error('CRM initialization pending')}
 function fileAll(){try{const rows=JSON.parse(fs.readFileSync(file,'utf8'));return Array.isArray(rows)?rows:[]}catch(e){if(e.code!=='ENOENT')console.error('CRM read failed:',e.message);return []}}
 function saveFile(rows){const tmp=file+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(rows,null,2),{mode:0o600});fs.renameSync(tmp,file)}
 async function all(){requireReady();if(!pool)return fileAll();const r=await pool.query("SELECT data FROM nova_leads ORDER BY created_at ASC LIMIT 5000");return r.rows.map(x=>x.data)}
-function create(data){const now=new Date().toISOString();return {id:'NW'+Date.now().toString(36).toUpperCase()+crypto.randomBytes(2).toString('hex'),name:data.name,contact:data.contact,type:data.type,notes:data.notes,createdAt:now,updatedAt:now,status:'new',history:[{at:now,status:'new'}]}}
+function create(data){const now=new Date().toISOString();return {id:'NW'+Date.now().toString(36).toUpperCase()+crypto.randomBytes(2).toString('hex'),name:data.name,contact:data.contact,type:data.type,notes:data.notes,source:data.source||'direct',campaign:data.campaign||'none',createdAt:now,updatedAt:now,status:'new',history:[{at:now,status:'new'}]}}
 async function add(item){
  requireReady();
  if(!pool){const rows=fileAll();if(rows.some(x=>x.id===item.id))return false;rows.push(item);saveFile(rows);return true}
