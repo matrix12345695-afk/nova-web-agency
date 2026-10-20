@@ -14,7 +14,8 @@ const TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
 const CHAT=String(process.env.TELEGRAM_ADMIN_CHAT_ID||'');
 const WEBHOOK_SECRET=TOKEN?crypto.createHash('sha256').update('novaweb-webhook:'+TOKEN).digest('hex'):'';
 const MAX=8192,limits=new Map();
-const SITE='https://novaweb-agency.onrender.com';
+const SITE='https://novaweb.uz';
+const WEBHOOK_SITE='https://novaweb-agency.onrender.com';
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))}
 function page(res){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'"});fs.createReadStream(path.join(__dirname,'index.html')).pipe(res)}
 function clean(x,n){return String(x??'').trim().slice(0,n).replace(/[\u0000-\u001F\u007F]/g,' ')}
@@ -145,7 +146,7 @@ async function webhook(req,res){
 }
 async function setupWebhook(){
  if(!TOKEN||!CHAT)return;
- try{await tg('setWebhook',{url:SITE+'/api/telegram/webhook',secret_token:WEBHOOK_SECRET,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook configured')}
+ try{await tg('setWebhook',{url:WEBHOOK_SITE+'/api/telegram/webhook',secret_token:WEBHOOK_SECRET,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook configured')}
  catch(e){console.error('Telegram webhook setup failed:',e.message)}
 }
 let checkingReminder=false;

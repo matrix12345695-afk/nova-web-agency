@@ -7,5 +7,5 @@ test('Landing supports RU and UZ and lead form tracks spam-trap',()=>{
 });
 test('SEO files include canonical origin and exclude API/demo',()=>{
  const robots=fs.readFileSync('robots.txt','utf8'),sitemap=fs.readFileSync('sitemap.xml','utf8');
- assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/demo\//);assert.match(sitemap,/https:\/\/novaweb-agency.onrender.com\//);
+ assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/demo\//);assert.match(sitemap,/https:\/\/novaweb.uz\//);
 });
