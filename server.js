@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const crm=require('./crm');
+const ui=require('./bot-ui');
 const PORT=Number(process.env.PORT||3000);
 const TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
 const CHAT=String(process.env.TELEGRAM_ADMIN_CHAT_ID||'');
@@ -40,7 +41,7 @@ async function lead(req,res){
  const item=crm.create({name,contact,type,notes});
  try{await crm.add(item)}catch(e){console.error('CRM write failed:',e.message);return json(res,503,{ok:false,message:'Сейчас не удалось сохранить заявку, попробуйте позднее.'})}
  seen.push(now);limits.set(ip,seen);if(limits.size>5000)limits.clear();
- try{await send(crm.describe(item),crm.keyboard(item.id))}catch(e){console.error('New lead Telegram notification failed; lead stored:',item.id,e.message)}
+ try{await send(crm.describe(item),ui.cardKeyboard(item.id))}catch(e){console.error('New lead Telegram notification failed; lead stored:',item.id,e.message)}
  return json(res,201,{ok:true,id:item.id,message:'Заявка принята. Мы свяжемся с вами.'});
 }
 async function sendBackup(){
@@ -50,33 +51,73 @@ async function sendBackup(){
  const response=await fetch('https://api.telegram.org/bot'+TOKEN+'/sendDocument',{method:'POST',body:form,signal:AbortSignal.timeout(15000)});
  const v=await response.json();if(!v.ok)throw Error('Telegram backup upload failed');
 }
+async function showCard(cb,text,keyboard){
+ try{
+  if(!cb.message?.message_id)throw Error('Cannot edit inaccessible Telegram message');
+  await tg('editMessageText',{chat_id:CHAT,message_id:cb.message.message_id,text,reply_markup:keyboard});
+ }catch(e){
+  if(/message is not modified/i.test(e.message))return;
+  console.error('Card edit unavailable, sending replacement:',e.message);
+  await send(text,keyboard);
+ }
+}
 async function onMessage(m){
  if(String(m.chat?.id)!==CHAT)return;
  const parts=String(m.text||'').trim().split(/\s+/),cmd=(parts[0]||'').split('@')[0];
- if(cmd==='/start')return send('🚀 NOVA WEB · Центр управления\n\nЗаявки, клиенты и их статусы находятся здесь.\n\nИспользуйте кнопки или /help.',menu());
- if(cmd==='/help')return send('🧭 NOVA WEB\n/start — меню\n/stats — сводка\n/leads — список заявок\n/lead ID — карточка\n/backup — резервная копия\n/help — справка',menu());
- if(cmd==='/stats'||cmd==='/status')return send(await statsText(),menu());
- if(cmd==='/leads')return send(await leadsText(),menu());
- if(cmd==='/lead'){const x=await crm.get(parts[1]||'');return send(x?crm.describe(x):'Заявка не найдена. Пример: /lead NW123',x?crm.keyboard(x.id):menu())}
+ if(cmd==='/start')return send(ui.homeText(crm.mode()),ui.menu());
+ if(cmd==='/help')return send(ui.helpText(),ui.back());
+ if(cmd==='/stats'||cmd==='/status')return send(ui.summaryText(await crm.summary(),crm.mode()),ui.menu());
+ if(cmd==='/leads'||cmd==='/new'){
+  const list=ui.leadList((await crm.all()).slice().reverse(),cmd==='/new'?'new':'all',0);
+  return send(list.text,list.keyboard);
+ }
+ if(cmd==='/today'){const x=await crm.summary();x.all=await crm.all();return send(ui.todayText(x),ui.menu())}
+ if(cmd==='/finance')return send(ui.financeText(),ui.menu());
+ if(cmd==='/lead'){
+  const id=parts[1]||'',item=await crm.get(id);
+  return send(item?crm.describe(item):'Заявка не найдена. Пример: /lead NW123',item?ui.cardKeyboard(item.id):ui.menu());
+ }
  if(cmd==='/backup')return sendBackup();
 }
 async function onCallback(cb){
  if(String(cb.from?.id)!==CHAT||String(cb.message?.chat?.id)!==CHAT)return answer(cb.id,'Нет доступа',true);
- const parts=String(cb.data||'').split('|');
- if(parts[0]==='menu'){await answer(cb.id,'Открываю раздел');return send(parts[1]==='stats'?await statsText():await leadsText(),menu())}
- if(parts[0]!=='st'||!crm.statuses[parts[2]])return answer(cb.id,'Неизвестная команда');
- let x=await crm.change(parts[1],parts[2]);
- if(!x){const recovered=await restoreFromTelegram(cb.message,parts[1]);if(recovered)x=await crm.change(parts[1],parts[2])}
- if(!x)return answer(cb.id,'Заявка не найдена',true);
- try{
-  await tg('editMessageText',{chat_id:CHAT,message_id:cb.message.message_id,text:crm.describe(x),reply_markup:crm.keyboard(x.id)});
-  return answer(cb.id,'Статус: '+crm.statuses[x.status]);
- }catch(e){
-  if(/message is not modified/i.test(e.message))return answer(cb.id,'Статус уже установлен');
-  console.error('Telegram edit failed:',e.message);
-  try{await send('🔄 Актуальная карточка заявки\n\n'+crm.describe(x),crm.keyboard(x.id));return answer(cb.id,'Обновил карточку новым сообщением')}
-  catch(f){console.error('Telegram fallback failed:',f.message);return answer(cb.id,'Статус сохранён, но карточка не обновилась',true)}
+ const p=String(cb.data||'').split('|');
+ if(p[0]==='nav'){
+  const section=p[1]||'home',page=Math.min(1000,Math.max(0,Number.parseInt(p[2]||'0',10)||0));
+  await answer(cb.id,'Открываю раздел');
+  if(section==='home')return showCard(cb,ui.homeText(crm.mode()),ui.menu());
+  if(section==='dashboard')return showCard(cb,ui.summaryText(await crm.summary(),crm.mode()),ui.menu());
+  if(section==='leads'||section==='new'){
+   const pageData=ui.leadList((await crm.all()).slice().reverse(),section==='new'?'new':'all',page);
+   return showCard(cb,pageData.text,pageData.keyboard);
+  }
+  if(section==='today'){const x=await crm.summary();x.all=await crm.all();return showCard(cb,ui.todayText(x),ui.menu())}
+  if(section==='finance')return showCard(cb,ui.financeText(),ui.menu());
+  if(section==='help')return showCard(cb,ui.helpText(),ui.back());
+  if(section==='backup'){
+   await showCard(cb,'📦 Отправляю резервную копию в этот чат. В файле содержатся клиентские контакты.',ui.menu());
+   return sendBackup();
+  }
+  return showCard(cb,'Раздел пока недоступен.',ui.menu());
  }
+ if(p[0]==='view'){
+  const item=await crm.get(p[1]),filter=['leads','new'].includes(p[2])?p[2]:'leads',page=Math.max(0,Number.parseInt(p[3]||'0',10)||0);
+  await answer(cb.id,item?'Открываю карточку':'Заявка не найдена',!item);
+  return showCard(cb,item?crm.describe(item):'Заявка не найдена.',item?ui.cardKeyboard(item.id,filter,page):ui.menu());
+ }
+ if(p[0]==='st'&&crm.statuses[p[2]]){
+  let item=await crm.change(p[1],p[2]);
+  if(!item){const restored=await restoreFromTelegram(cb.message,p[1]);if(restored)item=await crm.change(p[1],p[2])}
+  if(!item)return answer(cb.id,'Заявка не найдена',true);
+  try{
+   await showCard(cb,crm.describe(item),ui.cardKeyboard(item.id));
+   return answer(cb.id,'Статус: '+crm.statuses[item.status]);
+  }catch(e){
+   console.error('Status card update failed:',e.message);
+   return answer(cb.id,'Статус сохранён, но Telegram не показал карточку',true);
+  }
+ }
+ return answer(cb.id,'Неизвестная команда');
 }
 async function webhook(req,res){
  if(!TOKEN||!WEBHOOK_SECRET||req.headers['x-telegram-bot-api-secret-token']!==WEBHOOK_SECRET)return json(res,403,{ok:false});
@@ -97,7 +138,7 @@ async function setupWebhook(){
 }
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'crm-stage1',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'telegram-pro-stage2',storage:crm.mode()});
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
