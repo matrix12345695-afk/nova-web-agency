@@ -1,0 +1,5 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),a=require('../attribution'),fs=require('node:fs');
+test('Source and campaign allowlists reject arbitrary payloads',()=>{assert.equal(a.normalizeSource('instagram'),'instagram');assert.equal(a.normalizeSource('bogus'),'direct');assert.equal(a.normalizeCampaign('launch_01'),'launch_01');assert.equal(a.normalizeCampaign('a'.repeat(100)),'none')});
+test('Funnel reports sources but not paid revenue',()=>{const rows=[{source:'instagram',status:'new'},{source:'instagram',status:'done'},{source:'telegram',status:'lost'}];const x=a.funnel(rows);assert.equal(x.total,3);assert.equal(x.bySource.instagram.total,2);assert.equal(x.bySource.instagram.done,1);assert.match(a.report(rows),/не равны оплаченной выручке/)});
+test('Forms pass attribution and bot has sources navigation',()=>{assert.match(fs.readFileSync('index.html','utf8'),/utm_source/);assert.match(fs.readFileSync('showcase.html','utf8'),/utm_campaign/);assert.match(fs.readFileSync('server.js','utf8'),/cmd==='\/sources'/);assert.match(fs.readFileSync('bot-ui.js','utf8'),/nav\|sources/)});
