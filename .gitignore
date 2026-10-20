@@ -4,3 +4,8 @@ node_modules/
 !.env.example
 *.log
 .DS_Store
+
+# Customer leads and temporary exports must never enter a public repository
+data/
+*.dump
+*.backup
