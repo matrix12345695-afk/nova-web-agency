@@ -5,6 +5,7 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const crm=require('./crm');
 const ui=require('./bot-ui');
+const {buildBackup,inspectBackup}=require('./backup');
 const PORT=Number(process.env.PORT||3000);
 const TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
 const CHAT=String(process.env.TELEGRAM_ADMIN_CHAT_ID||'');
@@ -45,8 +46,8 @@ async function lead(req,res){
  return json(res,201,{ok:true,id:item.id,message:'Заявка принята. Мы свяжемся с вами.'});
 }
 async function sendBackup(){
- const rows=await crm.all();const bytes=Buffer.from(JSON.stringify({exportedAt:new Date().toISOString(),storage:crm.mode(),leads:rows},null,2));
- if(bytes.length>9*1024*1024){await send('Резервная копия слишком большая, нужен экспорт через защищённую админ-панель.');return}
+ const rows=await crm.all();const bytes=buildBackup(rows,crm.mode());const checked=inspectBackup(bytes);if(checked.count!==rows.length)throw Error('Backup validation failed');
+ 
  const form=new FormData();form.append('chat_id',CHAT);form.append('caption','📦 NOVA WEB · Резервная копия заявок · '+new Date().toISOString().slice(0,10));form.append('document',new Blob([bytes],{type:'application/json'}),'novaweb-backup-'+new Date().toISOString().slice(0,10)+'.json');
  const response=await fetch('https://api.telegram.org/bot'+TOKEN+'/sendDocument',{method:'POST',body:form,signal:AbortSignal.timeout(15000)});
  const v=await response.json();if(!v.ok)throw Error('Telegram backup upload failed');
