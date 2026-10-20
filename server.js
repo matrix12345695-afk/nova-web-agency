@@ -39,6 +39,7 @@ async function lead(req,res){
  if(seen.length>=5)return json(res,429,{ok:false,message:'Лимит заявок. Попробуйте позже.'});
  let body='';for await(const chunk of req){body+=chunk.toString();if(body.length>MAX)return json(res,413,{ok:false,message:'Слишком длинная заявка'})}
  let data;try{data=JSON.parse(body)}catch{return json(res,400,{ok:false,message:'Неверный формат заявки'})}
+ if(data.website)return json(res,200,{ok:true,message:'Заявка принята.'});
  const name=clean(data.name,80),contact=clean(data.contact,120),type=clean(data.type,80),notes=clean(data.notes,1500);
  if(name.length<2||contact.length<5||!['START','GROW','SCALE'].includes(type)||!data.consent)return json(res,400,{ok:false,message:'Проверьте обязательные поля'});
  const item=crm.create({name,contact,type,notes});
@@ -148,10 +149,11 @@ let checkingReminder=false;
 async function runReminders(){if(checkingReminder)return;checkingReminder=true;try{const result=await reminders.check({crm,send});if(result.status==='sent')console.log('Overdue digest delivered:',result.count)}catch(e){console.error('Overdue digest failed:',e.message)}finally{checkingReminder=false}}
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'showcase-v1',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'seo-uz-v1',storage:crm.mode()});
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
+ if(req.method==='GET'&&(p==='/robots.txt'||p==='/sitemap.xml')){res.writeHead(200,{'Content-Type':p.endsWith('.xml')?'application/xml; charset=utf-8':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'public, max-age=3600'});return fs.createReadStream(path.join(__dirname,p.slice(1))).pipe(res)}
  if(req.method==='GET'&&['/demo/beauty','/demo/estate','/demo/cafe'].includes(p)){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"});fs.createReadStream(path.join(__dirname,'showcase.html')).pipe(res);return}
  if(req.method==='GET'&&(p==='/'||p==='/index.html'))return page(res);
  res.writeHead(404);res.end('Not found');
