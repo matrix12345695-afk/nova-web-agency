@@ -7,7 +7,7 @@ function menu(){
  [{text:'🔎 Поиск',callback_data:'nav|search'},{text:'⏰ Просрочки',callback_data:'nav|overdue'}],
  [{text:'📣 Источники',callback_data:'nav|sources'},{text:'💰 Финансы',callback_data:'nav|finance'}],
  [{text:'📦 Резервная копия',callback_data:'nav|backup'}],
- [{text:'❔ Помощь',callback_data:'nav|help'},{text:'🌐 Открыть сайт',url:'https://novaweb-agency.onrender.com'}]
+ [{text:'❔ Помощь',callback_data:'nav|help'},{text:'🌐 Открыть сайт',url:'https://novaweb.uz'}]
  ]};
 }
 function back(){return {inline_keyboard:[[{text:'🏠 Главное меню',callback_data:'nav|home'}]]}}
