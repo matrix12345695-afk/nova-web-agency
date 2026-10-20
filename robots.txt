@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /demo/
+Sitemap: https://novaweb-agency.onrender.com/sitemap.xml
