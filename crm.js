@@ -15,6 +15,7 @@ async function init(){
  await pool.query("CREATE TABLE IF NOT EXISTS nova_leads (id text PRIMARY KEY, data jsonb NOT NULL, status text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS nova_lead_events (event_id bigserial PRIMARY KEY, lead_id text NOT NULL REFERENCES nova_leads(id), status text NOT NULL, recorded_at timestamptz NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS nova_telegram_updates (update_id bigint PRIMARY KEY, processed_at timestamptz NOT NULL DEFAULT now())");
+ await pool.query("CREATE TABLE IF NOT EXISTS nova_daily_reminders (day text PRIMARY KEY, claimed_at timestamptz NOT NULL DEFAULT now())");
  ready=true;console.log('CRM PostgreSQL schema ready');
 }
 function mode(){return pool?(ready?'postgres':'postgres_unavailable'):'temporary_file'}
@@ -75,4 +76,8 @@ async function amend(id,changes){
 async function search(query){const q=String(query||'').toLocaleLowerCase('ru-RU').trim();if(q.length<2)return [];return (await all()).filter(x=>[x.id,x.name,x.contact,x.type].some(v=>String(v||'').toLocaleLowerCase('ru-RU').includes(q))).slice(-20).reverse()}
 async function overdue(today=new Date().toISOString().slice(0,10)){return (await all()).filter(x=>x.due&&x.due<today&&!['done','lost'].includes(x.status)).sort((a,b)=>a.due.localeCompare(b.due))}
 
-module.exports={amend,search,overdue,init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};
+
+async function claimReminder(day){requireReady();if(!pool)return false;const r=await pool.query("INSERT INTO nova_daily_reminders (day) VALUES($1) ON CONFLICT DO NOTHING",[day]);return r.rowCount===1}
+async function releaseReminder(day){requireReady();if(!pool)return;await pool.query("DELETE FROM nova_daily_reminders WHERE day=$1",[day])}
+
+module.exports={claimReminder,releaseReminder,amend,search,overdue,init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};
