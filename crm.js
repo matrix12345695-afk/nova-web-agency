@@ -56,4 +56,23 @@ function describe(item){return [(statuses[item.status]||'📋').split(' ')[0]+' 
 function keyboard(id){return {inline_keyboard:[[{text:'🛠 В работу',callback_data:'st|'+id+'|working'},{text:'💬 Связались',callback_data:'st|'+id+'|contacted'}],[{text:'🧾 Счёт отправлен',callback_data:'st|'+id+'|invoice'},{text:'✅ Завершено',callback_data:'st|'+id+'|done'}],[{text:'❌ Отказ',callback_data:'st|'+id+'|lost'}]]}}
 async function isUpdateProcessed(id){if(!pool||!ready||!Number.isSafeInteger(id))return false;const q=await pool.query("SELECT 1 FROM nova_telegram_updates WHERE update_id=$1",[id]);return q.rowCount>0}
 async function markUpdateProcessed(id){if(!pool||!ready||!Number.isSafeInteger(id))return;await pool.query("INSERT INTO nova_telegram_updates (update_id) VALUES ($1) ON CONFLICT DO NOTHING",[id])}
-module.exports={init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};
+
+async function amend(id,changes){
+ requireReady();
+ const allowed=['note','task','due','quotedAmount'];
+ const update={};for(const k of allowed)if(Object.hasOwn(changes,k))update[k]=changes[k];
+ const apply=(row)=>{const now=new Date().toISOString();for(const [k,v] of Object.entries(update))row[k]=v;row.updatedAt=now;row.history=(row.history||[]).concat([{at:now,action:'edited',fields:Object.keys(update)}]);return row};
+ if(!pool){const rows=fileAll(),i=rows.findIndex(x=>x.id===id);if(i<0)return null;const item=apply(rows[i]);saveFile(rows);return item}
+ const client=await pool.connect();try{
+  await client.query('BEGIN');
+  const q=await client.query('SELECT data FROM nova_leads WHERE id=$1 FOR UPDATE',[id]);
+  if(!q.rows.length){await client.query('ROLLBACK');return null}
+  const item=apply(q.rows[0].data);
+  await client.query('UPDATE nova_leads SET data=$2::jsonb,updated_at=$3 WHERE id=$1',[id,JSON.stringify(item),item.updatedAt]);
+  await client.query('COMMIT');return item;
+ }catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}
+}
+async function search(query){const q=String(query||'').toLocaleLowerCase('ru-RU').trim();if(q.length<2)return [];return (await all()).filter(x=>[x.id,x.name,x.contact,x.type].some(v=>String(v||'').toLocaleLowerCase('ru-RU').includes(q))).slice(-20).reverse()}
+async function overdue(today=new Date().toISOString().slice(0,10)){return (await all()).filter(x=>x.due&&x.due<today&&!['done','lost'].includes(x.status)).sort((a,b)=>a.due.localeCompare(b.due))}
+
+module.exports={amend,search,overdue,init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};

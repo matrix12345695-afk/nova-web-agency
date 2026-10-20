@@ -5,6 +5,7 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const crm=require('./crm');
 const ui=require('./bot-ui');
+const ops=require('./operations');
 const {buildBackup,inspectBackup}=require('./backup');
 const PORT=Number(process.env.PORT||3000);
 const TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
@@ -73,10 +74,13 @@ async function onMessage(m){
   return send(list.text,list.keyboard);
  }
  if(cmd==='/today'){const x=await crm.summary();x.all=await crm.all();return send(ui.todayText(x),ui.menu())}
- if(cmd==='/finance')return send(ui.financeText(),ui.menu());
+ if(cmd==='/finance')return send(ops.finance(await crm.all()),ui.menu());
+ if(cmd==='/find'){const q=parts.slice(1).join(' ');if(q.length<2)return send('Используй /find имя, телефон или номер заявки');const matches=await crm.search(q);return send(matches.length?'🔎 Найденные заявки\n\n'+matches.slice(0,10).map(x=>x.id+' · '+x.name+' · '+x.status).join('\n'):'Совпадений нет.',ui.menu())}
+ if(cmd==='/overdue')return send(ops.deadlines(await crm.overdue()),ui.menu());
+ if(['/note','/task','/due','/quote'].includes(cmd)){const p=ops.parse(cmd.slice(1),parts.slice(1));if(p.error)return send(p.error);const updated=await crm.amend(p.id,p.changes);return send(updated?'✅ Карточка обновлена\n\n'+ops.details(updated):'Не найдена заявка '+p.id,updated?ui.cardKeyboard(updated.id):ui.menu())}
  if(cmd==='/lead'){
   const id=parts[1]||'',item=await crm.get(id);
-  return send(item?crm.describe(item):'Заявка не найдена. Пример: /lead NW123',item?ui.cardKeyboard(item.id):ui.menu());
+  return send(item?ops.details(item):'Заявка не найдена. Пример: /lead NW123',item?ui.cardKeyboard(item.id):ui.menu());
  }
  if(cmd==='/backup')return sendBackup();
 }
@@ -93,7 +97,9 @@ async function onCallback(cb){
    return showCard(cb,pageData.text,pageData.keyboard);
   }
   if(section==='today'){const x=await crm.summary();x.all=await crm.all();return showCard(cb,ui.todayText(x),ui.menu())}
-  if(section==='finance')return showCard(cb,ui.financeText(),ui.menu());
+  if(section==='finance')return showCard(cb,ops.finance(await crm.all()),ui.menu());
+  if(section==='overdue')return showCard(cb,ops.deadlines(await crm.overdue()),ui.menu());
+  if(section==='search')return showCard(cb,'🔎 Поиск клиента: отправь /find имя или телефон',ui.menu());
   if(section==='help')return showCard(cb,ui.helpText(),ui.back());
   if(section==='backup'){
    await showCard(cb,'📦 Отправляю резервную копию в этот чат. В файле содержатся клиентские контакты.',ui.menu());
@@ -104,7 +110,7 @@ async function onCallback(cb){
  if(p[0]==='view'){
   const item=await crm.get(p[1]),filter=['leads','new'].includes(p[2])?p[2]:'leads',page=Math.max(0,Number.parseInt(p[3]||'0',10)||0);
   await answer(cb.id,item?'Открываю карточку':'Заявка не найдена',!item);
-  return showCard(cb,item?crm.describe(item):'Заявка не найдена.',item?ui.cardKeyboard(item.id,filter,page):ui.menu());
+  return showCard(cb,item?ops.details(item):'Заявка не найдена.',item?ui.cardKeyboard(item.id,filter,page):ui.menu());
  }
  if(p[0]==='st'&&crm.statuses[p[2]]){
   let item=await crm.change(p[1],p[2]);
@@ -139,7 +145,7 @@ async function setupWebhook(){
 }
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'telegram-pro-stage2',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'telegram-pro-operations',storage:crm.mode()});
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
