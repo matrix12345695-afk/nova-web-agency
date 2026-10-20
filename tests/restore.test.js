@@ -4,10 +4,10 @@ test('Duplicate record IDs are rejected',()=>{const l={id:'NWTEST123456',created
 test('Restore refuses writes without explicit confirmation',async()=>{await assert.rejects(()=>restore({bytes:Buffer.from('{}'),url:'postgres://example',confirm:false}),/explicit/)});
 test('Real PostgreSQL backup is restored into an isolated empty destination', {skip:!process.env.TEST_POSTGRES_URL},async()=>{
  const {Pool}=require('pg');const url=process.env.TEST_POSTGRES_URL;
- const pool=new Pool({connectionString:url});await pool.query('DROP TABLE IF EXISTS nova_lead_events,nova_telegram_updates,nova_leads CASCADE');await pool.end();
+ const pool=new Pool({connectionString:url});await pool.query('CREATE SCHEMA IF NOT EXISTS nova_restore_sandbox');await pool.query('DROP SCHEMA nova_restore_sandbox CASCADE');await pool.query('CREATE SCHEMA nova_restore_sandbox');await pool.end();const isolated=new URL(url);isolated.searchParams.set('options','-c search_path=nova_restore_sandbox');const testUrl=isolated.toString();
  const lead={id:'NWBACKUP001',name:'Sample',contact:'NOTREAL',type:'START',createdAt:'2026-10-20T09:00:00Z',status:'new',history:[{at:'2026-10-20T09:00:00Z',status:'new'}],note:'Internal test',quotedAmount:1500000};
  const bytes=buildBackup([lead],'postgres');
- const x=await restore({bytes,url,confirm:true});assert.equal(x.count,1);
- const verify=new Pool({connectionString:url});const q=await verify.query('SELECT data FROM nova_leads WHERE id=$1',[lead.id]);assert.equal(q.rows[0].data.note,'Internal test');
+ const x=await restore({bytes,url:testUrl,confirm:true});assert.equal(x.count,1);
+ const verify=new Pool({connectionString:testUrl});const q=await verify.query('SELECT data FROM nova_leads WHERE id=$1',[lead.id]);assert.equal(q.rows[0].data.note,'Internal test');
  await assert.rejects(()=>restore({bytes,url,confirm:true}),/destination already contains CRM records/);await verify.end();
 });
