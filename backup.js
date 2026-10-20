@@ -22,7 +22,7 @@ function inspectBackup(bytes){
  if(!data||data.format!=='novaweb-crm'||data.schemaVersion!==1||!Array.isArray(data.leads)||data.leads.length!==data.count)throw Error('Invalid NOVA WEB backup');
  const seen=new Set();
  for(const row of data.leads){
-  if(!row||!/^NW[A-Za-z0-9]{6,45}$/.test(row.id)||seen.has(row.id)||!Array.isArray(row.history)||!['new','working','contacted','invoice','done','lost'].includes(row.status)||!Number.isFinite(Date.parse(row.createdAt)))throw Error('Invalid lead in NOVA WEB backup');
+  if(!row||!/^NW[A-Za-z0-9]{4,45}$/.test(row.id)||seen.has(row.id)||!Array.isArray(row.history)||!['new','working','contacted','invoice','done','lost'].includes(row.status)||!Number.isFinite(Date.parse(row.createdAt)))throw Error('Invalid lead in NOVA WEB backup');
   seen.add(row.id);
  }
  return {count:data.count,createdAt:data.exportedAt,storage:data.storage,leadIds:data.leads.map(x=>x.id)};
