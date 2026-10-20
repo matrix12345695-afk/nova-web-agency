@@ -6,6 +6,7 @@ const crypto=require('node:crypto');
 const crm=require('./crm');
 const ui=require('./bot-ui');
 const ops=require('./operations');
+const reminders=require('./reminders');
 const {buildBackup,inspectBackup}=require('./backup');
 const PORT=Number(process.env.PORT||3000);
 const TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
@@ -143,13 +144,15 @@ async function setupWebhook(){
  try{await tg('setWebhook',{url:SITE+'/api/telegram/webhook',secret_token:WEBHOOK_SECRET,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook configured')}
  catch(e){console.error('Telegram webhook setup failed:',e.message)}
 }
+let checkingReminder=false;
+async function runReminders(){if(checkingReminder)return;checkingReminder=true;try{const result=await reminders.check({crm,send});if(result.status==='sent')console.log('Overdue digest delivered:',result.count)}catch(e){console.error('Overdue digest failed:',e.message)}finally{checkingReminder=false}}
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'telegram-pro-operations',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'reminders-portfolio-v1',storage:crm.mode()});
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
  if(req.method==='GET'&&(p==='/'||p==='/index.html'))return page(res);
  res.writeHead(404);res.end('Not found');
 });
-(async()=>{try{await crm.init();server.listen(PORT,'0.0.0.0',()=>{console.log('NOVA WEB on '+PORT,'storage:',crm.mode());setTimeout(setupWebhook,1500)})}catch(e){console.error('Failed to initialize CRM:',e.message);process.exitCode=1}})();
+(async()=>{try{await crm.init();server.listen(PORT,'0.0.0.0',()=>{console.log('NOVA WEB on '+PORT,'storage:',crm.mode());setTimeout(setupWebhook,1500);setTimeout(()=>runReminders(),12000);const reminderTimer=setInterval(()=>runReminders(),60*60*1000);reminderTimer.unref()})}catch(e){console.error('Failed to initialize CRM:',e.message);process.exitCode=1}})();
