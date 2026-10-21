@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const crm=require('./crm');
+const {checkReadiness}=require('./health');
 const attribution=require('./attribution');
 const ui=require('./bot-ui');
 const ops=require('./operations');
@@ -153,7 +154,10 @@ let checkingReminder=false;
 async function runReminders(){if(checkingReminder)return;checkingReminder=true;try{const result=await reminders.check({crm,send});if(result.status==='sent')console.log('Overdue digest delivered:',result.count)}catch(e){console.error('Overdue digest failed:',e.message)}finally{checkingReminder=false}}
 const server=http.createServer((req,res)=>{
  const p=new URL(req.url,'http://localhost').pathname;
- if(req.method==='GET'&&p==='/health')return json(res,200,{ok:true,version:'sales-funnel-v1',storage:crm.mode()});
+ if(req.method==='GET'&&p==='/health'){
+  checkReadiness(crm).then(state=>json(res,state.ok?200:503,{...state,version:'sales-funnel-v1'})).catch(()=>json(res,503,{ok:false,storage:'postgres_unavailable'}));
+  return;
+ }
  if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
