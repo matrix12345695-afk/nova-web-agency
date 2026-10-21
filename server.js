@@ -36,7 +36,7 @@ async function restoreFromTelegram(message,id){
  await crm.add(entry);return crm.get(id)
 }
 async function lead(req,res){
- if(!TOKEN||!CHAT||crm.mode()==='postgres_unavailable')return json(res,503,{ok:false,message:'Приём заявок временно недоступен.'});
+ if(!TOKEN||!CHAT||!(await checkReadiness(crm)).ok)return json(res,503,{ok:false,message:'Приём заявок временно недоступен.'});
  const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'unknown').split(',')[0].slice(0,80);
  const now=Date.now(),seen=(limits.get(ip)||[]).filter(t=>now-t<3600000);
  if(seen.length>=5)return json(res,429,{ok:false,message:'Лимит заявок. Попробуйте позже.'});
@@ -158,7 +158,10 @@ const server=http.createServer((req,res)=>{
   checkReadiness(crm).then(state=>json(res,state.ok?200:503,{...state,version:'sales-funnel-v1'})).catch(()=>json(res,503,{ok:false,storage:'postgres_unavailable'}));
   return;
  }
- if(req.method==='GET'&&p==='/api/status')return json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&crm.mode()!=='postgres_unavailable')});
+ if(req.method==='GET'&&p==='/api/status'){
+  checkReadiness(crm).then(state=>json(res,200,{ordersEnabled:Boolean(TOKEN&&CHAT&&state.ok)})).catch(()=>json(res,200,{ordersEnabled:false}));
+  return;
+ }
  if(req.method==='POST'&&p==='/api/telegram/webhook'){webhook(req,res).catch(e=>{console.error('Webhook:',e.message);json(res,500,{ok:false})});return}
  if(req.method==='POST'&&p==='/api/lead'){lead(req,res).catch(e=>{console.error('Lead:',e.message);json(res,500,{ok:false,message:'Ошибка сервера'})});return}
  if(req.method==='GET'&&(p==='/robots.txt'||p==='/sitemap.xml')){res.writeHead(200,{'Content-Type':p.endsWith('.xml')?'application/xml; charset=utf-8':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'public, max-age=3600'});return fs.createReadStream(path.join(__dirname,p.slice(1))).pipe(res)}
