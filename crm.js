@@ -19,6 +19,7 @@ async function init(){
  ready=true;console.log('CRM PostgreSQL schema ready');
 }
 function mode(){return pool?(ready?'postgres':'postgres_unavailable'):'temporary_file'}
+async function ping(){if(!pool||!ready)throw Error('CRM unavailable');await pool.query({text:'SELECT 1',query_timeout:2500})}
 function requireReady(){if(!ready)throw Error('CRM initialization pending')}
 function fileAll(){try{const rows=JSON.parse(fs.readFileSync(file,'utf8'));return Array.isArray(rows)?rows:[]}catch(e){if(e.code!=='ENOENT')console.error('CRM read failed:',e.message);return []}}
 function saveFile(rows){const tmp=file+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(rows,null,2),{mode:0o600});fs.renameSync(tmp,file)}
@@ -80,4 +81,4 @@ async function overdue(today=new Date().toISOString().slice(0,10)){return (await
 async function claimReminder(day){requireReady();if(!pool)return false;const r=await pool.query("INSERT INTO nova_daily_reminders (day) VALUES($1) ON CONFLICT DO NOTHING",[day]);return r.rowCount===1}
 async function releaseReminder(day){requireReady();if(!pool)return;await pool.query("DELETE FROM nova_daily_reminders WHERE day=$1",[day])}
 
-module.exports={claimReminder,releaseReminder,amend,search,overdue,init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};
+module.exports={ping,claimReminder,releaseReminder,amend,search,overdue,init,mode,all,add,create,get,change,summary,describe,keyboard,statuses,isUpdateProcessed,markUpdateProcessed};
