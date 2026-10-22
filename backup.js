@@ -27,4 +27,21 @@ function inspectBackup(bytes){
  }
  return {count:data.count,createdAt:data.exportedAt,storage:data.storage,leadIds:data.leads.map(x=>x.id)};
 }
-module.exports={buildBackup,inspectBackup};
+async function readBackupSnapshot(client){
+ if(!client||typeof client.query!=='function')throw new TypeError('Expected PostgreSQL client');
+ await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+ try{
+  const countResult=await client.query('SELECT COUNT(*)::bigint AS total FROM nova_leads');
+  const total=Number(countResult.rows[0]?.total);
+  if(!Number.isSafeInteger(total)||total<0)throw Error('Invalid CRM backup count');
+  const result=await client.query('SELECT data FROM nova_leads ORDER BY created_at ASC, id ASC');
+  const rows=result.rows.map(row=>row.data);
+  if(rows.length!==total)throw Error('Incomplete CRM backup snapshot');
+  await client.query('COMMIT');
+  return rows;
+ }catch(error){
+  await client.query('ROLLBACK').catch(()=>{});
+  throw error;
+ }
+}
+module.exports={buildBackup,inspectBackup,readBackupSnapshot};
